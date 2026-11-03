@@ -1,0 +1,25 @@
+node_modules/
+
+# Secrets & auth state
+.env
+.env.*
+!.env.example
+.auth/*
+!.auth/.gitkeep
+
+# Playwright output
+test-results/
+playwright-report/
+blob-report/
+all-blob-reports/
+playwright/.cache/
+
+# Claude Code personal overrides & worktrees
+CLAUDE.local.md
+.claude/settings.local.json
+.claude/worktrees/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.log

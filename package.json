@@ -1,0 +1,30 @@
+{
+  "name": "limelight",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Limelight - Playwright + TypeScript test automation framework (UI E2E, API, hybrid, visual)",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint:guardrails": "node .claude/hooks/guardrails.mjs --all",
+    "verify": "npm run typecheck && npm run lint:guardrails",
+    "test": "playwright test",
+    "test:api": "playwright test --project=api",
+    "test:e2e": "playwright test --project=e2e-chromium",
+    "test:visual": "playwright test --project=visual-chromium",
+    "test:visual:update": "playwright test --project=visual-chromium --update-snapshots",
+    "test:list": "playwright test --list",
+    "report": "playwright show-report",
+    "browsers:install": "playwright install --with-deps chromium"
+  },
+  "devDependencies": {
+    "@faker-js/faker": "^10.6.0",
+    "@playwright/test": "^1.64.1",
+    "@types/node": "^26.6.6",
+    "dotenv": "^18.0.9",
+    "typescript": "^7.0.2",
+    "zod": "^4.6.7"
+  }
+}
