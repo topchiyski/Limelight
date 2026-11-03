@@ -2,6 +2,8 @@
   "name": "limelight",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
+  "author": "Stoyan Topchiyski",
   "description": "Limelight - Playwright + TypeScript test automation framework (UI E2E, API, hybrid, visual)",
   "engines": {
     "node": ">=22"

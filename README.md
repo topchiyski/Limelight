@@ -100,3 +100,7 @@ Configure the repository variables `BASE_URL` and `API_URL`, and the secrets `US
 ## Contact
 
 Questions about Limelight? Reach out on [LinkedIn](https://www.linkedin.com/in/stoyan-topchiyski/).
+
+## License
+
+[MIT](LICENSE) © 2026 Stoyan Topchiyski
