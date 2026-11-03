@@ -1,0 +1,28 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: chore(deps)
+    groups:
+      # Separate PR: a Playwright bump also changes the CI image and may need new visual baselines.
+      playwright:
+        patterns: ['@playwright/test']
+      dev-dependencies:
+        patterns: ['*']
+        exclude-patterns: ['@playwright/test']
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: chore(ci)
+    groups:
+      actions:
+        patterns: ['*']

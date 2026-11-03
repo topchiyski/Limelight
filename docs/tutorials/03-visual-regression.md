@@ -94,7 +94,9 @@ The first run fails with *"A snapshot doesn't exist … writing actual"*. Playwr
 
 ## Step 4: Generate baselines on Linux
 
-Use the official Playwright Docker image. Its version must match your installed one, which you can check with `npx playwright --version`. The examples use `1.64.1`.
+**Easiest: let CI do it.** Push your branch, then run **Actions → Update visual baselines** on that branch. It regenerates the baselines in the exact image CI compares against and commits them for you. See [Run Limelight in CI](../how-to/run-in-ci.md#updating-visual-baselines).
+
+**Locally with Docker**, to iterate faster without pushing: use the official Playwright Docker image. Its version must match your installed one, which you can check with `npx playwright --version`. The examples use `1.64.1`.
 
 **PowerShell:**
 

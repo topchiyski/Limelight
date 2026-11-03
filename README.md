@@ -1,5 +1,9 @@
 # Limelight
 
+[![Limelight CI](https://github.com/topchiyski/Limelight/actions/workflows/limelight-ci.yml/badge.svg)](https://github.com/topchiyski/Limelight/actions/workflows/limelight-ci.yml)
+[![Latest report](https://img.shields.io/badge/report-GitHub%20Pages-2ea44f)](https://topchiyski.github.io/Limelight/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 Production-grade Playwright + TypeScript test automation: **UI E2E** (Page Object Model), **REST API**, **hybrid API+UI**, and **visual regression** in one fixture-driven framework.
 
 > 💬 For any questions or to get in touch, contact me on [LinkedIn](https://www.linkedin.com/in/stoyan-topchiyski/).
@@ -87,13 +91,15 @@ The reference tests target a conventional app: `/login` with labelled Email/Pass
 
 ## CI
 
-`.github/workflows/limelight-ci.yml` runs in three stages:
+GitHub Actions runs Limelight on every push to `main`, on pull requests, nightly at 03:00 UTC, and on demand.
 
-1. Static checks: typecheck and guardrails.
-2. Tests in 4 parallel shards, each producing a blob report.
-3. A merge job that combines the shard reports into a single HTML report artifact.
+| Workflow | What it does |
+|---|---|
+| `limelight-ci.yml` | Typecheck, guardrails and workflow lint → 4 test shards in the official Playwright container → merged report as a job summary, PR comment and artifact → `main` runs published to [GitHub Pages](https://topchiyski.github.io/Limelight/) |
+| `update-visual-baselines.yml` | Manual: regenerates Linux visual baselines in the CI container and commits them to your branch |
+| `dependabot.yml` | Weekly npm and Actions updates; Playwright bumps get their own PR |
 
-Configure the repository variables `BASE_URL` and `API_URL`, and the secrets `USER_EMAIL`, `USER_PASSWORD` and `API_TOKEN`.
+Until `BASE_URL` and the credentials are configured, test jobs are skipped with a warning, so CI stays green. Setup steps: [Run Limelight in CI](docs/how-to/run-in-ci.md).
 
 ## Working with Claude Code
 

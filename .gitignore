@@ -12,6 +12,8 @@ test-results/
 playwright-report/
 blob-report/
 all-blob-reports/
+results.json
+summary.md
 playwright/.cache/
 
 # Claude Code personal overrides & worktrees

@@ -1,0 +1,94 @@
+name: Update visual baselines
+
+# Run from a feature branch (Actions → Update visual baselines → "Use workflow from").
+# Regenerates Linux baselines in the same Playwright image CI compares against, then commits them to that branch.
+on:
+  workflow_dispatch:
+    inputs:
+      test_env:
+        description: Environment to capture from
+        type: choice
+        options: [dev, staging]
+        default: staging
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+concurrency:
+  group: limelight-baselines-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  resolve:
+    name: Resolve Playwright image
+    runs-on: ubuntu-latest
+    outputs:
+      image: ${{ steps.image.outputs.image }}
+    steps:
+      - name: Refuse to run on main
+        if: github.ref == 'refs/heads/main'
+        run: |
+          echo "::error::Run this on a feature branch so baseline changes are reviewed in a pull request."
+          exit 1
+      - uses: actions/checkout@v7
+      - id: image
+        run: |
+          version=$(node -p "require('./package-lock.json').packages['node_modules/@playwright/test'].version")
+          echo "image=mcr.microsoft.com/playwright:v${version}-noble" >> "$GITHUB_OUTPUT"
+
+  update:
+    name: Regenerate & commit baselines
+    needs: resolve
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    container:
+      image: ${{ needs.resolve.outputs.image }}
+      options: --ipc=host
+    environment:
+      name: ${{ inputs.test_env }}
+    env:
+      TEST_ENV: ${{ inputs.test_env }}
+      BASE_URL: ${{ vars.BASE_URL }}
+      API_URL: ${{ vars.API_URL }}
+      USER_EMAIL: ${{ secrets.USER_EMAIL }}
+      USER_PASSWORD: ${{ secrets.USER_PASSWORD }}
+      API_TOKEN: ${{ secrets.API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Regenerate visual baselines
+        run: npx playwright test --project=visual-chromium --update-snapshots=changed
+      - name: Upload report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: baseline-update-report
+          path: playwright-report
+          retention-days: 7
+          if-no-files-found: ignore
+      - name: Commit changed baselines
+        env:
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tests/visual/__screenshots__/linux
+          if git diff --cached --quiet; then
+            echo "Baselines already up to date." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          git diff --cached --stat >> "$GITHUB_STEP_SUMMARY"
+          git commit -m "test(visual): update Linux baselines [run ${GITHUB_RUN_ID}]"
+          git push origin "HEAD:${BRANCH}"
+          echo "✅ Committed updated baselines to \`${BRANCH}\`. Re-run CI on the PR (pushes by GITHUB_TOKEN do not trigger workflows)." >> "$GITHUB_STEP_SUMMARY"

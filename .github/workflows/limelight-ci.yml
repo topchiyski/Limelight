@@ -4,6 +4,8 @@ on:
   push:
     branches: [main]
   pull_request:
+  schedule:
+    - cron: '0 3 * * *' # nightly regression, 03:00 UTC
   workflow_dispatch:
     inputs:
       test_env:
@@ -11,83 +13,208 @@ on:
         type: choice
         options: [dev, staging, prod]
         default: staging
+      project:
+        description: Playwright project
+        type: choice
+        options: [all, api, e2e-chromium, visual-chromium]
+        default: all
+      grep:
+        description: Only run tests matching this title/tag regex (e.g. @api)
+        type: string
+        required: false
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
 
 concurrency:
-  group: limelight-${{ github.ref }}
-  cancel-in-progress: true
-
-env:
-  TEST_ENV: ${{ inputs.test_env || 'staging' }}
-  BASE_URL: ${{ vars.BASE_URL }}
-  API_URL: ${{ vars.API_URL }}
-  USER_EMAIL: ${{ secrets.USER_EMAIL }}
-  USER_PASSWORD: ${{ secrets.USER_PASSWORD }}
-  API_TOKEN: ${{ secrets.API_TOKEN }}
+  group: limelight-ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   static-checks:
+    name: Typecheck & guardrails
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    outputs:
+      playwright-image: ${{ steps.image.outputs.image }}
+      test-env: ${{ steps.image.outputs.test-env }}
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
       - run: npm ci
       - run: npm run typecheck
       - run: npm run lint:guardrails
+      - name: Lint workflows
+        uses: docker://rhysd/actionlint:1.7.12
+        with:
+          args: -color
+      - name: Resolve Playwright image and target environment
+        id: image
+        env:
+          INPUT_TEST_ENV: ${{ inputs.test_env }}
+        run: |
+          version=$(node -p "require('./package-lock.json').packages['node_modules/@playwright/test'].version")
+          echo "image=mcr.microsoft.com/playwright:v${version}-noble" >> "$GITHUB_OUTPUT"
+          echo "test-env=${INPUT_TEST_ENV:-staging}" >> "$GITHUB_OUTPUT"
 
   test:
+    name: Tests (shard ${{ matrix.shardIndex }}/${{ matrix.shardTotal }})
     needs: static-checks
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # Same image used to generate visual baselines, so screenshots are pixel-comparable.
+    container:
+      image: ${{ needs.static-checks.outputs.playwright-image }}
+      options: --ipc=host
+    environment:
+      name: ${{ needs.static-checks.outputs.test-env }}
     strategy:
       fail-fast: false
       matrix:
         shardIndex: [1, 2, 3, 4]
         shardTotal: [4]
+    outputs:
+      ready: ${{ steps.config.outputs.ready }}
+    env:
+      TEST_ENV: ${{ needs.static-checks.outputs.test-env }}
+      BASE_URL: ${{ vars.BASE_URL }}
+      API_URL: ${{ vars.API_URL }}
+      USER_EMAIL: ${{ secrets.USER_EMAIL }}
+      USER_PASSWORD: ${{ secrets.USER_PASSWORD }}
+      API_TOKEN: ${{ secrets.API_TOKEN }}
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
+      - name: Check target configuration
+        id: config
+        run: |
+          missing=""
+          [ -n "$BASE_URL" ] || missing="$missing BASE_URL(variable)"
+          [ -n "$USER_EMAIL" ] || missing="$missing USER_EMAIL(secret)"
+          [ -n "$USER_PASSWORD" ] || missing="$missing USER_PASSWORD(secret)"
+          if [ -n "$missing" ]; then
+            echo "::warning title=Limelight tests skipped::Not configured for '$TEST_ENV':$missing. See docs/how-to/run-in-ci.md"
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@v7
+        if: steps.config.outputs.ready == 'true'
+      - uses: actions/setup-node@v7
+        if: steps.config.outputs.ready == 'true'
         with:
           node-version: 24
           cache: npm
       - run: npm ci
-      - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium
-      - name: Run Playwright (shard ${{ matrix.shardIndex }}/${{ matrix.shardTotal }})
-        run: npx playwright test --shard=${{ matrix.shardIndex }}/${{ matrix.shardTotal }}
+        if: steps.config.outputs.ready == 'true'
+      - name: Run Playwright
+        if: steps.config.outputs.ready == 'true'
+        env:
+          SHARD: ${{ matrix.shardIndex }}/${{ matrix.shardTotal }}
+          INPUT_PROJECT: ${{ inputs.project }}
+          INPUT_GREP: ${{ inputs.grep }}
+        run: |
+          args=(--shard="$SHARD")
+          if [ -n "$INPUT_PROJECT" ] && [ "$INPUT_PROJECT" != "all" ]; then args+=(--project="$INPUT_PROJECT"); fi
+          if [ -n "$INPUT_GREP" ]; then args+=(--grep="$INPUT_GREP"); fi
+          npx playwright test "${args[@]}"
       - name: Upload blob report
-        if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() && steps.config.outputs.ready == 'true' }}
+        uses: actions/upload-artifact@v7
         with:
           name: blob-report-${{ matrix.shardIndex }}
           path: blob-report
           retention-days: 1
+          if-no-files-found: ignore
 
-  merge-reports:
+  report:
+    name: Report
     needs: test
-    if: ${{ !cancelled() }}
+    if: ${{ !cancelled() && needs.test.outputs.ready == 'true' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
       - run: npm ci
       - name: Download blob reports
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: all-blob-reports
           pattern: blob-report-*
           merge-multiple: true
-      - name: Merge into HTML report
-        run: npx playwright merge-reports --reporter html ./all-blob-reports
+      - name: Merge shards into HTML + JSON
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_NAME: results.json
+        run: npx playwright merge-reports --reporter html,json ./all-blob-reports
       - name: Upload HTML report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: limelight-html-report-${{ github.run_attempt }}
           path: playwright-report
           retention-days: 14
+      - name: Write job summary
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          node .github/scripts/report-summary.mjs results.json > summary.md
+          cat summary.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Comment on pull request
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const fs = require('node:fs');
+            const marker = '<!-- limelight-report -->';
+            const body = `${marker}\n${fs.readFileSync('summary.md', 'utf8')}`;
+            const { owner, repo } = context.repo;
+            const issue_number = context.issue.number;
+            const comments = await github.paginate(github.rest.issues.listComments, { owner, repo, issue_number });
+            const existing = comments.find((c) => c.body?.startsWith(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+            } else {
+              await github.rest.issues.createComment({ owner, repo, issue_number, body });
+            }
+      - name: Upload Pages artifact
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: playwright-report
+
+  publish:
+    name: Publish report to GitHub Pages
+    needs: report
+    if: ${{ !cancelled() && needs.report.result == 'success' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    concurrency:
+      group: limelight-pages
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/configure-pages@v6
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v5
+      - name: Link report in summary
+        env:
+          PAGE_URL: ${{ steps.deployment.outputs.page_url }}
+        run: |
+          echo "📊 Latest report: $PAGE_URL" >> "$GITHUB_STEP_SUMMARY"
