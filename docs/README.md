@@ -24,4 +24,6 @@ Start with **Getting started**, then follow the tutorials in order. Each tutoria
 - [CLAUDE.md](../CLAUDE.md): the conventions Claude Code follows in this repo
 - [Playwright docs](https://playwright.dev/docs/intro)
 
-Questions? Reach out on [LinkedIn](https://www.linkedin.com/in/stoyan-topchiyski/).
+## Contact
+
+For any questions, feedback or contact, reach me on LinkedIn: https://www.linkedin.com/in/stoyan-topchiyski/

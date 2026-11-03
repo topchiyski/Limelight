@@ -2,6 +2,8 @@
 
 Production-grade Playwright + TypeScript test automation: **UI E2E** (Page Object Model), **REST API**, **hybrid API+UI**, and **visual regression** in one fixture-driven framework.
 
+> 💬 For any questions or to get in touch, contact me on [LinkedIn](https://www.linkedin.com/in/stoyan-topchiyski/).
+
 ## Quick start
 
 ```bash
@@ -99,7 +101,7 @@ Configure the repository variables `BASE_URL` and `API_URL`, and the secrets `US
 
 ## Contact
 
-Questions about Limelight? Reach out on [LinkedIn](https://www.linkedin.com/in/stoyan-topchiyski/).
+For any questions, feedback or contact, reach me on LinkedIn: https://www.linkedin.com/in/stoyan-topchiyski/
 
 ## License
 
